@@ -90,25 +90,17 @@ app.get("/get_data_user", async (req, res) => {
   try {
     const [results] = await db.query(`
       SELECT 
-        u.id AS user_id, 
-        u.title, 
-        u.first_name, 
-        u.last_name, 
-        u.mobile_phone, 
-        u.role, 
-        u.breach,
-        u.membership_status, 
-        u.eudr_status, 
-        ud.nickname, 
-        ud.id_card_number, 
-        ud.birth_date, 
-        ud.address, 
-        ud.phone, 
-        ud.owner_percentage, 
-        ud.credit_percentage, 
-        ud.role_eudr, 
-        ud.field_area, 
-        ud.bank_account, 
+        c.id AS customer_id, 
+        c.title, 
+        c.first_name, 
+        c.last_name, 
+        c.mobile_phone, 
+        c.breach,
+        c.membership_status, 
+        c.eudr_status, 
+        c.bank_account,
+        c.owner_percentage,
+        c.credit_percentage,
         lt.id AS land_id,
         lt.title_deed_no,
         lt.land_location,
@@ -116,42 +108,33 @@ app.get("/get_data_user", async (req, res) => {
         lt.ownership_type,
         lt.acquired_date,
         lt.land_value
-      FROM user u
-      LEFT JOIN user_details ud ON u.id = ud.user_id
-      LEFT JOIN land_titles lt ON lt.id = u.id  
+      FROM customer c
+      LEFT JOIN customer_land cl ON c.id = cl.customer_id
+      LEFT JOIN land_titles lt ON cl.land_id = lt.id
     `);
 
-    // 🔹 จัดกลุ่มข้อมูลโดยใช้ user_id เป็น key
-    const userMap = new Map();
+    const customerMap = new Map();
     
     results.forEach(row => {
-      if (!userMap.has(row.user_id)) {
-        userMap.set(row.user_id, {
-          user_id: row.user_id,
+      if (!customerMap.has(row.customer_id)) {
+        customerMap.set(row.customer_id, {
+          customer_id: row.customer_id,
           title: row.title,
           first_name: row.first_name,
           last_name: row.last_name,
           mobile_phone: row.mobile_phone,
-          role: row.role,
           breach: row.breach,
           membership_status: row.membership_status,
           eudr_status: row.eudr_status,
-          nickname: row.nickname,
-          id_card_number: row.id_card_number,
-          birth_date: row.birth_date,
-          address: row.address,
-          phone: row.phone,
+          bank_account: row.bank_account,
           owner_percentage: row.owner_percentage,
           credit_percentage: row.credit_percentage,
-          role_eudr: row.role_eudr,
-          field_area: row.field_area,
-          bank_account: row.bank_account,
-          lands: [] // 🏡 สร้าง array สำหรับเก็บที่ดิน
+          lands: []
         });
       }
 
       if (row.land_id) {
-        userMap.get(row.user_id).lands.push({
+        customerMap.get(row.customer_id).lands.push({
           land_id: row.land_id,
           title_deed_no: row.title_deed_no,
           land_location: row.land_location,
@@ -164,17 +147,16 @@ app.get("/get_data_user", async (req, res) => {
     });
 
     res.status(200).json({
-      message: "User data retrieved successfully.",
-      data: Array.from(userMap.values())
+      message: "Customer data retrieved successfully.",
+      data: Array.from(customerMap.values())
     });
   } catch (error) {
-    console.error("❌ Error retrieving user data:", error);
-    res.status(500).json({ error: "Failed to retrieve user data." });
+    console.error("Error retrieving customer data:", error);
+    res.status(500).json({ error: "Failed to retrieve customer data." });
   }
 });
 
-
-
+// -- API สำหรับดึงข้อมูลลูกค้ารายบุคคล
 app.get("/get_data_user/:id", async (req, res) => {
   const { id } = req.params;
 
@@ -182,25 +164,18 @@ app.get("/get_data_user/:id", async (req, res) => {
     const [results] = await db.query(
       `
       SELECT 
-        u.id AS user_id, 
-        u.title, 
-        u.first_name, 
-        u.last_name, 
-        u.mobile_phone, 
-        u.role, 
-        u.breach,
-        u.membership_status, 
-        u.eudr_status, 
-        ud.nickname, 
-        ud.id_card_number, 
-        ud.birth_date, 
-        ud.address, 
-        ud.phone, 
-        ud.owner_percentage, 
-        ud.credit_percentage, 
-        ud.role_eudr, 
-        ud.field_area, 
-        ud.bank_account, 
+        c.id AS customer_id, 
+        c.title, 
+        c.first_name, 
+        c.last_name, 
+        c.mobile_phone, 
+        c.breach,
+        c.membership_status, 
+        c.eudr_status, 
+        cd.field_area,
+        c.bank_account,
+        c.owner_percentage,
+        c.credit_percentage,
         lt.id AS land_id,
         lt.title_deed_no,
         lt.land_location,
@@ -208,45 +183,38 @@ app.get("/get_data_user/:id", async (req, res) => {
         lt.ownership_type,
         lt.acquired_date,
         lt.land_value
-      FROM user u
-      LEFT JOIN user_details ud ON u.id = ud.user_id
-      LEFT JOIN land_titles lt ON lt.id = u.id
-      WHERE u.id = ?
+      FROM customer c
+      LEFT JOIN customer_details cd ON c.id = cd.customer_id
+      LEFT JOIN customer_land cl ON c.id = cl.customer_id
+      LEFT JOIN land_titles lt ON cl.land_id = lt.id
+      WHERE c.id = ?
       `,
       [id]
     );
 
     if (results.length === 0) {
-      return res.status(404).json({ error: "User not found." });
+      return res.status(404).json({ error: "Customer not found." });
     }
 
-    // จัดรูปแบบข้อมูลให้อยู่ในรูปแบบ JSON
-    const userData = {
-      user_id: results[0].user_id,
+    const customerData = {
+      customer_id: results[0].customer_id,
       title: results[0].title,
       first_name: results[0].first_name,
       last_name: results[0].last_name,
       mobile_phone: results[0].mobile_phone,
-      role: results[0].role,
-      breach:results[0].breach,
+      breach: results[0].breach,
       membership_status: results[0].membership_status,
       eudr_status: results[0].eudr_status,
-      nickname: results[0].nickname,
-      id_card_number: results[0].id_card_number,
-      birth_date: results[0].birth_date,
-      address: results[0].address,
-      phone: results[0].phone,  
-      owner_percentage: results[0].owner_percentage,
-      credit_percentage: results[0].credit_percentage,
-      role_eudr: results[0].role_eudr,
       field_area: results[0].field_area,
       bank_account: results[0].bank_account,
+      owner_percentage: results[0].owner_percentage,
+      credit_percentage: results[0].credit_percentage,
       lands: []
     };
 
     results.forEach(row => {
       if (row.land_id) {
-        userData.lands.push({
+        customerData.lands.push({
           land_id: row.land_id,
           title_deed_no: row.title_deed_no,
           land_location: row.land_location,
@@ -259,41 +227,38 @@ app.get("/get_data_user/:id", async (req, res) => {
     });
 
     res.status(200).json({
-      message: "User data retrieved successfully.",
-      data: userData
+      message: "Customer data retrieved successfully.",
+      data: customerData
     });
   } catch (error) {
-    console.error("Error retrieving user data:", error);
-    res.status(500).json({ error: "Failed to retrieve user data." });
+    console.error("Error retrieving customer data:", error);
+    res.status(500).json({ error: "Failed to retrieve customer data." });
   }
 });
 
 
-
 // API เพิ่มข้อมูลใน `user` และ `user_details`
 app.post("/user-with-details", async (req, res) => {
+  const data = req.body;
+
   const {
-    id, // ใช้ id เดียวกันกับ user
+    id, // ใช้ id เดียวกันกับ customer
     title,
     first_name,
     last_name,
     mobile_phone,
-    role,
+    bank_account,
+    owner_percentage,
+    credit_percentage,
     breach,
     membership_status,
     eudr_status,
-    nickname,
-    id_card_number,
-    birth_date,
-    address,
-    phone,
-    owner_percentage,
-    credit_percentage,
-    role_eudr,
-    field_area,
-    bank_account,
-    land // ที่ดินของ user (object หรือ array)
-  } = req.body;
+    created_at,
+    updated_at,
+    land // ที่ดินของ customer (object หรือ array)
+  } = data;
+
+  console.log(data);
 
   if (!id || !first_name || !last_name || !mobile_phone) {
     return res.status(400).json({ error: "ID, First Name, Last Name, and Mobile Phone are required." });
@@ -303,41 +268,329 @@ app.post("/user-with-details", async (req, res) => {
     // เริ่ม Transaction
     await db.beginTransaction();
 
-    // ✅ 1. Insert ข้อมูล `user`
+    // 👉 1. Insert ข้อมูล `customer`
     await db.query(
       `
-      INSERT INTO user (id, title, first_name, last_name, mobile_phone, role ,breach, membership_status, eudr_status) 
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `,
-      [id, title || null, first_name, last_name, mobile_phone, role || "user", membership_status || 0, eudr_status || 0]
-    );
-
-    // ✅ 2. Insert ข้อมูล `user_details`
-    await db.query(
-      `
-      INSERT INTO user_details (
-        id, user_id, nickname, id_card_number, birth_date, address, phone, 
-        owner_percentage, credit_percentage, role_eudr, field_area, bank_account, land_title_id
-      )
+      INSERT INTO customer (
+        id, title, first_name, last_name, mobile_phone, 
+        bank_account, owner_percentage, credit_percentage, 
+        breach, membership_status, eudr_status, created_at, updated_at
+      ) 
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
-        id, id, nickname || null, id_card_number || null, birth_date || null, address || null, phone || null,
-        owner_percentage || 0.0, credit_percentage || 0.0, role_eudr || null, field_area || null, bank_account || null, id
+        id, title || null, first_name, last_name, mobile_phone, 
+        bank_account || null, owner_percentage || 0.0, credit_percentage || 0.0, 
+        breach || null, membership_status || 0, eudr_status || 0, 
+        created_at ? new Date(created_at) : new Date(), 
+        updated_at ? new Date(updated_at) : new Date()
       ]
     );
 
-    // ✅ 3. Insert ข้อมูล `land_titles` (ถ้ามีที่ดิน)
+    // 👉 2. Insert ข้อมูล `customer_details`
+    await db.query(
+      `
+      INSERT INTO customer_details (
+        id, customer_id, owner_percentage, credit_percentage, field_area
+      )
+      VALUES (?, ?, ?, ?, ?)
+      `,
+      [
+        id, id, owner_percentage || 0.0, credit_percentage || 0.0, 
+        data.field_area || null
+      ]
+    );
+
+    // 👉 3. Insert ข้อมูล `land_titles` และเชื่อมโยงกับ `customer_land`
     if (land) {
+      const insertLand = async (landItem) => {
+        // Insert ข้อมูลที่ดิน
+        await db.query(
+          `
+          INSERT INTO land_titles (
+            id, title_deed_no, land_location, land_area, 
+            ownership_type, acquired_date, land_value, 
+            created_at, updated_at
+          ) 
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+          `,
+          [
+            landItem.id, // ใช้ id ของที่ดิน
+            landItem.title_deed_no || null,
+            landItem.land_location || null,
+            landItem.land_area || 0.0,
+            landItem.ownership_type || null,
+            landItem.acquired_date || null,
+            landItem.land_value || 0.0,
+            created_at ? new Date(created_at) : new Date(), 
+            updated_at ? new Date(updated_at) : new Date()
+          ]
+        );
+
+        // เชื่อมโยงลูกค้ากับที่ดินในตาราง customer_land
+        await db.query(
+          `
+          INSERT INTO customer_land (
+            id, customer_id, land_id
+          ) 
+          VALUES (?, ?, ?)
+          `,
+          [
+            `${id}_${landItem.id}`, // unique id สำหรับ customer_land
+            id,                    // customer_id
+            landItem.id            // land_id
+          ]
+        );
+      };
+
       if (Array.isArray(land)) {
-        for (const l of land) {
+        for (const landItem of land) {
+          await insertLand(landItem);
+        }
+      } else {
+        await insertLand(land);
+      }
+    }
+
+    // 👉 Commit Transaction
+    await db.commit();
+
+    res.status(201).json({
+      message: "Customer, customer details, and land information inserted successfully.",
+      customerId: id,
+    });
+  } catch (error) {
+    // ❌ Rollback Transaction หากมีข้อผิดพลาด
+    await db.rollback();
+    console.error("Error inserting customer, details, and land:", error);
+    res.status(500).json({ error: "Failed to insert customer, details, and land information." });
+  }
+});
+
+// -- API สำหรับดึงข้อมูลลูกค้า
+app.get("/get_data_user/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const [results] = await db.query(
+      `
+      SELECT 
+        c.id AS customer_id, 
+        c.title, 
+        c.first_name, 
+        c.last_name, 
+        c.mobile_phone, 
+        c.bank_account, 
+        c.owner_percentage, 
+        c.credit_percentage, 
+        c.breach,
+        c.membership_status, 
+        c.eudr_status, 
+        cd.field_area, 
+        lt.id AS land_id,
+        lt.title_deed_no,
+        lt.land_location,
+        lt.land_area,
+        lt.ownership_type,
+        lt.acquired_date,
+        lt.land_value
+      FROM customer c
+      LEFT JOIN customer_details cd ON c.id = cd.customer_id
+      LEFT JOIN customer_land cl ON c.id = cl.customer_id
+      LEFT JOIN land_titles lt ON cl.land_id = lt.id
+      WHERE c.id = ?
+      `,
+      [id]
+    );
+
+    if (results.length === 0) {
+      return res.status(404).json({ error: "Customer not found." });
+    }
+
+    // จัดรูปแบบข้อมูลให้อยู่ในรูปแบบ JSON
+    const customerData = {
+      customer_id: results[0].customer_id,
+      title: results[0].title,
+      first_name: results[0].first_name,
+      last_name: results[0].last_name,
+      mobile_phone: results[0].mobile_phone,
+      bank_account: results[0].bank_account,
+      owner_percentage: results[0].owner_percentage,
+      credit_percentage: results[0].credit_percentage,
+      breach: results[0].breach,
+      membership_status: results[0].membership_status,
+      eudr_status: results[0].eudr_status,
+      field_area: results[0].field_area,
+      lands: []
+    };
+
+    results.forEach(row => {
+      if (row.land_id) {
+        customerData.lands.push({
+          land_id: row.land_id,
+          title_deed_no: row.title_deed_no,
+          land_location: row.land_location,
+          land_area: row.land_area,
+          ownership_type: row.ownership_type,
+          acquired_date: row.acquired_date,
+          land_value: row.land_value
+        });
+      }
+    });
+
+    res.status(200).json({
+      message: "Customer data retrieved successfully.",
+      data: customerData
+    });
+  } catch (error) {
+    console.error("Error retrieving customer data:", error);
+    res.status(500).json({ error: "Failed to retrieve customer data." });
+  }
+});
+
+
+
+
+// -- API สำหรับเพิ่มข้อมูลที่ดิน
+app.post("/add-land", async (req, res) => {
+  const { customer_id, land } = req.body;
+
+  if (!customer_id || !land) {
+    return res.status(400).json({ error: "Customer ID and land data are required." });
+  }
+
+  try {
+    const [customerCheck] = await db.query("SELECT id FROM customer WHERE id = ?", [customer_id]);
+    if (customerCheck.length === 0) {
+      return res.status(404).json({ error: "Customer not found." });
+    }
+
+    await db.beginTransaction();
+
+    const insertLand = async (l) => {
+      const landId = `${customer_id}_${Date.now()}`;
+      await db.query(
+        `
+        INSERT INTO land_titles (id, title_deed_no, land_location, land_area, ownership_type, acquired_date, land_value) 
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        `,
+        [
+          landId,
+          l.title_deed_no || null,
+          l.land_location || null,
+          l.land_area || 0.0,
+          l.ownership_type || null,
+          l.acquired_date || null,
+          l.land_value || 0.0
+        ]
+      );
+
+      await db.query(
+        `
+        INSERT INTO customer_land (id, customer_id, land_id) 
+        VALUES (?, ?, ?)
+        `,
+        [`${customer_id}_${landId}`, customer_id, landId]
+      );
+    };
+
+    if (Array.isArray(land)) {
+      for (const l of land) {
+        await insertLand(l);
+      }
+    } else {
+      await insertLand(land);
+    }
+
+    await db.commit();
+
+    res.status(201).json({ message: "Land information inserted successfully.", customerId: customer_id });
+  } catch (error) {
+    await db.rollback();
+    console.error("Error inserting land:", error);
+    res.status(500).json({ error: "Failed to insert land information." });
+  }
+});
+
+// -- API สำหรับลบข้อมูลลูกค้า
+app.delete("/delete_user/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    await db.beginTransaction();
+
+    await db.query("DELETE FROM customer_land WHERE customer_id = ?", [id]);
+    await db.query("DELETE FROM customer_details WHERE customer_id = ?", [id]);
+    await db.query("DELETE FROM auth WHERE customer_id = ?", [id]);
+    const [result] = await db.query("DELETE FROM customer WHERE id = ?", [id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Customer not found." });
+    }
+
+    await db.commit();
+
+    res.status(200).json({ message: `Customer with ID ${id} and all related data deleted successfully.` });
+  } catch (error) {
+    await db.rollback();
+    console.error("Error deleting customer:", error);
+    res.status(500).json({ error: "Failed to delete customer and related data." });
+  }
+});
+
+// -- API สำหรับลบข้อมูลที่ดิน
+app.delete("/delete_land/:id", async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    await db.beginTransaction();
+
+    await db.query("DELETE FROM customer_land WHERE land_id = ?", [id]);
+    const [result] = await db.query("DELETE FROM land_titles WHERE id = ?", [id]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ error: "Land not found." });
+    }
+
+    await db.commit();
+
+    res.status(200).json({ message: `Land with ID ${id} deleted successfully.` });
+  } catch (error) {
+    await db.rollback();
+    console.error("Error deleting land:", error);
+    res.status(500).json({ error: "Failed to delete land information." });
+  }
+});
+
+
+app.put("/update_user/:id", async (req, res) => {
+  const { id } = req.params;
+  const { title, first_name, last_name, mobile_phone, bank_account, owner_percentage, credit_percentage, breach, membership_status, eudr_status, land } = req.body;
+
+  try {
+    await db.beginTransaction();
+
+    await db.query(
+      `
+      UPDATE customer 
+      SET title = ?, first_name = ?, last_name = ?, mobile_phone = ?, bank_account = ?, owner_percentage = ?, credit_percentage = ?, breach = ?, membership_status = ?, eudr_status = ?, updated_at = CURRENT_TIMESTAMP 
+      WHERE id = ?
+      `,
+      [title, first_name, last_name, mobile_phone, bank_account, owner_percentage, credit_percentage, breach, membership_status, eudr_status, id]
+    );
+
+    if (land) {
+      const insertLand = async (l) => {
+        const [existingLand] = await db.query("SELECT id FROM land_titles WHERE id = ?", [l.id]);
+
+        if (existingLand.length === 0) {
           await db.query(
             `
             INSERT INTO land_titles (id, title_deed_no, land_location, land_area, ownership_type, acquired_date, land_value) 
             VALUES (?, ?, ?, ?, ?, ?, ?)
             `,
             [
-              id, // ใช้ `user.id` เป็น `id` ของ land_titles
+              l.id,
               l.title_deed_no || null,
               l.land_location || null,
               l.land_area || 0.0,
@@ -346,150 +599,50 @@ app.post("/user-with-details", async (req, res) => {
               l.land_value || 0.0
             ]
           );
+
+          await db.query(
+            `
+            INSERT INTO customer_land (id, customer_id, land_id) 
+            VALUES (?, ?, ?)
+            `,
+            [`${id}_${l.id}`, id, l.id]
+          );
+        }else {
+          await db.query(
+            `
+            UPDATE land_titles 
+            SET title_deed_no = ?, land_location = ?, land_area = ?, ownership_type = ?, acquired_date = ?, land_value = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+            `,
+            [
+              l.title_deed_no || null,
+              l.land_location || null,
+              l.land_area || 0.0,
+              l.ownership_type || null,
+              l.acquired_date || null,
+              l.land_value || 0.0,
+              l.id
+            ]
+          );
+        }
+      };
+
+      if (Array.isArray(land)) {
+        for (const l of land) {
+          await insertLand(l);
         }
       } else {
-        await db.query(
-          `
-          INSERT INTO land_titles (id, title_deed_no, land_location, land_area, ownership_type, acquired_date, land_value) 
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-          `,
-          [
-            id, // ใช้ `user.id` เป็น `id` ของ land_titles
-            land.title_deed_no || null,
-            land.land_location || null,
-            land.land_area || 0.0,
-            land.ownership_type || null,
-            land.acquired_date || null,
-            land.land_value || 0.0
-          ]
-        );
+        await insertLand(land);
       }
     }
 
-    // ✅ Commit Transaction
     await db.commit();
 
-    res.status(201).json({
-      message: "User, user details, and land information inserted successfully.",
-      userId: id,
-    });
+    res.status(200).json({ message: "Customer updated successfully." });
   } catch (error) {
-    // ❌ Rollback Transaction หากมีข้อผิดพลาด
     await db.rollback();
-    console.error("Error inserting user, details, and land:", error);
-    res.status(500).json({ error: "Failed to insert user, details, and land information." });
-  }
-});
-
-app.post("/add-land", async (req, res) => {
-  const { user_id, land } = req.body; // รับค่า user_id และ land
-
-  // ตรวจสอบข้อมูลที่จำเป็น
-  if (!user_id || !land) {
-    return res.status(400).json({ error: "User ID and land data are required." });
-  }
-
-  try {
-    // ตรวจสอบว่ามี user_id อยู่ในระบบหรือไม่
-    const [userCheck] = await db.query("SELECT id FROM user WHERE id = ?", [user_id]);
-    if (userCheck.length === 0) {
-      return res.status(404).json({ error: "User not found." });
-    }
-
-    // เริ่ม Transaction
-    await db.beginTransaction();
-
-    if (Array.isArray(land)) {
-      // ถ้ามีหลายแปลง -> Loop Insert
-      for (const l of land) {
-        await db.query(
-          `
-          INSERT INTO land_titles (id, title_deed_no, land_location, land_area, ownership_type, acquired_date, land_value) 
-          VALUES (?, ?, ?, ?, ?, ?, ?)
-          `,
-          [
-            user_id, // ใช้ user_id เป็น id ของที่ดิน
-            l.title_deed_no || null,
-            l.land_location || null,
-            l.land_area || 0.0,
-            l.ownership_type || null,
-            l.acquired_date || null,
-            l.land_value || 0.0
-          ]
-        );
-      }
-    } else {
-      // ถ้ามีแปลงเดียว -> Insert ปกติ
-      await db.query(
-        `
-        INSERT INTO land_titles (id, title_deed_no, land_location, land_area, ownership_type, acquired_date, land_value) 
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        `,
-        [
-          user_id, // ใช้ user_id เป็น id ของที่ดิน
-          land.title_deed_no || null,
-          land.land_location || null,
-          land.land_area || 0.0,
-          land.ownership_type || null,
-          land.acquired_date || null,
-          land.land_value || 0.0
-        ]
-      );
-    }
-
-    // Commit Transaction
-    await db.commit();
-
-    res.status(201).json({
-      message: "Land information inserted successfully.",
-      userId: user_id,
-    });
-  } catch (error) {
-    // Rollback Transaction หากมีข้อผิดพลาด
-    await db.rollback();
-    console.error("Error inserting land:", error);
-    res.status(500).json({ error: "Failed to insert land information." });
-  }
-});
-
-
-
-
-// API ลบข้อมูลใน user และ user_details
-app.delete("/delete_user/:id", async (req, res) => {
-  const { id } = req.params;
-
-  try {
-    // เริ่ม Transaction
-    await db.beginTransaction();
-
-    // 🔹 ลบข้อมูลใน `land_titles` (ที่ดินของผู้ใช้)
-    await db.query("DELETE FROM land_titles WHERE id = ?", [id]);
-
-    // 🔹 ลบข้อมูลใน `user_details`
-    await db.query("DELETE FROM user_details WHERE user_id = ?", [id]);
-
-    // 🔹 ลบข้อมูลใน `auth` (ถ้ามีระบบล็อกอิน)
-    await db.query("DELETE FROM auth WHERE user_id = ?", [id]);
-
-    // 🔹 ลบข้อมูลใน `user`
-    const [result] = await db.query("DELETE FROM user WHERE id = ?", [id]);
-
-    // หากไม่มีข้อมูลใน `user` ให้แจ้งว่าไม่พบ
-    if (result.affectedRows === 0) {
-      return res.status(404).json({ error: "User not found." });
-    }
-
-    // ✅ Commit Transaction
-    await db.commit();
-
-    res.status(200).json({ message: `User with ID ${id} and all related data deleted successfully.` });
-
-  } catch (error) {
-    // ❌ Rollback Transaction หากมีข้อผิดพลาด
-    await db.rollback();
-    console.error("Error deleting user:", error);
-    res.status(500).json({ error: "Failed to delete user and related data." });
+    console.error("Error updating customer:", error);
+    res.status(500).json({ error: "Failed to update customer data." });
   }
 });
 
@@ -505,7 +658,7 @@ app.post("/login", async (req, res) => {
 
   try {
     // 🔹 ดึงข้อมูลผู้ใช้จาก database
-    const [users] = await db.query("SELECT * FROM auth WHERE email = ? AND password = ? AND breach = ? LIMIT 1", [username,password ,breach]);
+    const [users] = await db.query("SELECT * FROM auth WHERE email = ? AND password = ? LIMIT 1", [username,password ,breach]);
 
     if (users.length === 0) {
       return res.status(404).json({ error: "User not found." });
