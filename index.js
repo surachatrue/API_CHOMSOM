@@ -236,7 +236,6 @@ app.get("/get_data_user/:id", async (req, res) => {
   }
 });
 
-
 // API เพิ่มข้อมูลใน `user` และ `user_details`
 app.post("/user-with-details", async (req, res) => {
   const data = req.body;
@@ -448,9 +447,6 @@ app.get("/get_data_user/:id", async (req, res) => {
   }
 });
 
-
-
-
 // -- API สำหรับเพิ่มข้อมูลที่ดิน
 app.post("/add-land", async (req, res) => {
   const { customer_id, land } = req.body;
@@ -562,7 +558,6 @@ app.delete("/delete_land/:id", async (req, res) => {
   }
 });
 
-
 app.put("/update_user/:id", async (req, res) => {
   const { id } = req.params;
   const { title, first_name, last_name, mobile_phone, bank_account, owner_percentage, credit_percentage, breach, membership_status, eudr_status, land } = req.body;
@@ -646,8 +641,6 @@ app.put("/update_user/:id", async (req, res) => {
   }
 });
 
-
-
 app.post("/login", async (req, res) => {
   console.log(req.body);
   const { username, password ,breach} = req.body;
@@ -685,8 +678,6 @@ app.post("/login", async (req, res) => {
     res.status(500).json({ error: "Failed to log in." });
   }
 });
-
-
 
 // API อัปเดตข้อมูลใน user และ user_details
 app.put("/update_user/:id", async (req, res) => {
@@ -796,6 +787,157 @@ app.put("/update_user/:id", async (req, res) => {
     await db.rollback();
     console.error("Error updating user and land:", error);
     res.status(500).json({ error: "Failed to update user and land information." });
+  }
+});
+
+app.post('/add_branch', async (req, res) => {
+  try {
+      const {
+          branch_name, branch_code, phone_number, email, branch_type,
+          house_number, village_name, moo, road, sub_district, district,
+          province, postal_code, latitude, longitude
+      } = req.body;
+
+      if (!branch_name || !branch_code) {
+          return res.status(400).json({ error: 'Branch name and code are required' });
+      }
+
+      const checkBranch = await db.query(`SELECT id FROM branch WHERE branch_code = ?`, [branch_code]);
+      if (checkBranch[0].length > 0) {
+          return res.status(409).json({ error: 'Branch code already exists' });
+      }
+
+      const sql = `INSERT INTO branch (
+          branch_name, branch_code, phone_number, email, branch_type,
+          house_number, village_name, moo, road, sub_district, district,
+          province, postal_code, latitude, longitude
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+
+      const values = [
+          branch_name, branch_code, phone_number, email, branch_type,
+          house_number, village_name, moo, road, sub_district, district,
+          province, postal_code, latitude, longitude
+      ];
+
+      const [result] = await db.query(sql, values);
+      res.status(201).json({ message: 'Branch added successfully', branch_id: result.insertId });
+  } catch (err) {
+      res.status(500).json({ error: 'Database error', details: err });
+  }
+});
+
+app.get('/get_data_branch', async (req, res) => {
+  try {
+      const [results] = await db.query(`
+          SELECT 
+              b.id AS branch_id,
+              b.branch_name,
+              b.branch_code,
+              b.phone_number,
+              b.email,
+              b.branch_type,
+              b.house_number,
+              b.village_name,
+              b.moo,
+              b.road,
+              b.sub_district,
+              b.district,
+              b.province,
+              b.postal_code,
+              b.latitude,
+              b.longitude
+          FROM branch b
+      `);
+
+      res.status(200).json({
+          message: "Branch data retrieved successfully.",
+          data: results
+      });
+  } catch (error) {
+      console.error("Error retrieving branch data:", error);
+      res.status(500).json({ error: "Failed to retrieve branch data." });
+  }
+});
+
+app.post('/add_rubber_transaction', async (req, res) => {
+  try {
+      const { receipt_number, branch_id, customer_id, total_amount, items } = req.body;
+
+      if (!receipt_number || !branch_id || !customer_id || !items || items.length === 0) {
+          return res.status(400).json({ error: 'Missing required fields or items' });
+      }
+
+      const receiptSql = `INSERT INTO receipts (receipt_number, branch_id, customer_id, total_amount) VALUES (?, ?, ?, ?)`;
+      const [receiptResult] = await db.query(receiptSql, [receipt_number, branch_id, customer_id, total_amount]);
+      const receiptId = receiptResult.insertId;
+
+      const itemSql = `INSERT INTO receipt_items (receipt_id, product_name, quantity, unit_price, total_price) VALUES ?`;
+      const itemValues = items.map(item => [receiptId, item.product_name, item.quantity, item.unit_price, item.total_price]);
+      await db.query(itemSql, [itemValues]);
+
+      res.status(201).json({ message: 'Rubber transaction added successfully', receipt_id: receiptId });
+  } catch (error) {
+      console.error("Error adding rubber transaction:", error);
+      res.status(500).json({ error: "Failed to add rubber transaction." });
+  }
+});
+
+// เส้นทางดึงข้อมูลใบเสร็จพร้อมรายละเอียดสินค้า
+app.get('/get_rubber_transactions', async (req, res) => {
+  try {
+      const [results] = await db.query(`
+          SELECT 
+              r.id AS receipt_id, 
+              r.receipt_number, 
+              r.branch_id, 
+              r.customer_id, 
+              r.total_amount, 
+              r.created_at,
+              ri.product_name,
+              ri.quantity,
+              ri.unit_price,
+              ri.total_price
+          FROM receipts r
+          LEFT JOIN receipt_items ri ON r.id = ri.receipt_id
+      `);
+      
+      res.status(200).json({
+          message: "Rubber transaction data retrieved successfully.",
+          data: results
+      });
+  } catch (error) {
+      console.error("Error retrieving rubber transactions:", error);
+      res.status(500).json({ error: "Failed to retrieve rubber transactions." });
+  }
+});
+
+app.get('/get_rubber_transactions/:customer_id', async (req, res) => {
+  try {
+      const { customer_id } = req.params;
+      const [results] = await db.query(`
+          SELECT 
+              r.id AS receipt_id, 
+              r.receipt_number, 
+              r.branch_id, 
+              r.customer_id, 
+              r.total_amount, 
+              r.created_at,
+              ri.product_name,
+              ri.quantity,
+              ri.unit_price,
+              ri.total_price
+          FROM receipts r
+          LEFT JOIN receipt_items ri ON r.id = ri.receipt_id
+          WHERE r.customer_id = ?
+      `, [customer_id]);
+      
+      res.status(200).json({
+          message: "Rubber transaction data retrieved successfully.",
+          data: results
+      });
+  } catch (error) {
+      console.error("Error retrieving rubber transactions for customer:", error);
+      res.status(500).json({ error: "Failed to retrieve rubber transactions for customer." });
   }
 });
 
