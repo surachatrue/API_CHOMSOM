@@ -8,7 +8,7 @@ const os = require("os");
 const cors = require("cors");
 // ใช้ Middleware รองรับ JSON
 app.use(express.json());
-
+//test auto fetch
 app.use(cors({
   origin: "*", // หรือกำหนดเป็น ["http://example.com", "http://localhost:3000"]
   methods: ["GET", "POST", "PUT", "DELETE"], // อนุญาตเฉพาะเมธอดที่ใช้
