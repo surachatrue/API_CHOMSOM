@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"name": "google-cloud-sdk",
+			"path": "../google-cloud-sdk"
+		},
+		{
+			"name": "ChomSom_API",
+			"path": "."
+		}
+	],
+	"settings": {}
+}
