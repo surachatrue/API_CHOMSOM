@@ -3,7 +3,7 @@ const express = require("express");
 const mysql = require("mysql2/promise");
 const bcrypt = require("bcrypt");
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.DB_PORT || 3000;
 const os = require("os");
 const cors = require("cors");
 // ใช้ Middleware รองรับ JSON
