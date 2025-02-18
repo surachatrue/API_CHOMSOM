@@ -3,7 +3,7 @@ const express = require("express");
 const mysql = require("mysql2/promise");
 // const bcrypt = require("bcrypt");
 const app = express();
-const PORT = process.env.DB_PORT || 3000;
+const PORT =3000;
 const os = require("os");
 const cors = require("cors");
 // ใช้ Middleware รองรับ JSON
@@ -14,35 +14,6 @@ app.use(cors({
   methods: ["GET", "POST", "PUT", "DELETE"], // อนุญาตเฉพาะเมธอดที่ใช้
   allowedHeaders: ["Content-Type", "Authorization"] // อนุญาตเฉพาะ header ที่ใช้
 }));
-
-// const allowedIPs = ["192.168.1.100", "192.168.1.101", "127.0.0.1","192.168.137.1"]; // สามารถปรับเป็น .env ได้
-
-// // Middleware ตรวจสอบ IP
-// const allowedSubnet = ["192.168.137.1","127.0.0.1"]; // Subnet ของ LAN/WiFi
-
-// const ipFilter = (req, res, next) => {
-//   let clientIP = req.ip || req.connection.remoteAddress;
-
-//   // แปลง IPv6 localhost (::1) เป็น IPv4 localhost (127.0.0.1)
-//   if (clientIP === "::1") clientIP = "127.0.0.1";
-
-//   // ตรวจสอบว่า IP อยู่ใน Subnet ที่อนุญาตหรือไม่
-//   const isAllowed = allowedSubnet.some((subnet) => clientIP.startsWith(subnet));
-
-//   if (!isAllowed) {
-//     return res
-//       .status(403)
-//       .json({ error: `Access denied. Unauthorized IP address: ${clientIP}` });
-//   }
-
-//   next(); // หาก IP อยู่ใน Subnet ให้ดำเนินการต่อ
-// };
-
-// app.use((req, res, next) => {
-//   const clientIP = req.headers["x-forwarded-for"] || req.connection.remoteAddress;
-//   console.log("Client IP:", clientIP); // แสดง IP Address ของ Client
-//   next();
-// });
 
 const getNetworkIPs = () => {
   const networkInterfaces = os.networkInterfaces(); // ดึงข้อมูลเครือข่ายทั้งหมด
@@ -82,8 +53,11 @@ let db;
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
     port: process.env.DB_PORT || 3306,
+
   });
   console.log("Connected to MySQL database.");
+
+
 })();
 
 app.get("/get_data_user", async (req, res) => {
@@ -826,6 +800,30 @@ app.post('/add_branch', async (req, res) => {
   }
 });
 
+
+
+app.post('/add_rubber_transaction', async (req, res) => {
+  try {
+      const { receipt_number, branch_id, customer_id, total_amount, items } = req.body;
+
+      if (!receipt_number || !branch_id || !customer_id || !items || items.length === 0) {
+          return res.status(400).json({ error: 'Missing required fields or items' });
+      }
+
+      const receiptSql = `INSERT INTO receipts (receipt_number, branch_id, customer_id, total_amount) VALUES (?, ?, ?, ?)`;
+      const [receiptResult] = await db.query(receiptSql, [receipt_number, branch_id, customer_id, total_amount]);
+      const receiptId = receiptResult.insertId;
+
+      const itemSql = `INSERT INTO receipt_items (receipt_id, product_name, quantity, unit_price, total_price) VALUES ?`;
+      const itemValues = items.map(item => [receiptId, item.product_name, item.quantity, item.unit_price, item.total_price]);
+      await db.query(itemSql, [itemValues]);
+
+      res.status(201).json({ message: 'Rubber transaction added successfully', receipt_id: receiptId });
+  } catch (error) {
+      console.error("Error adding rubber transaction:", error);
+      res.status(500).json({ error: "Failed to add rubber transaction." });
+  }
+});
 app.get('/get_data_branch', async (req, res) => {
   try {
       const [results] = await db.query(`
@@ -858,30 +856,6 @@ app.get('/get_data_branch', async (req, res) => {
       res.status(500).json({ error: "Failed to retrieve branch data." });
   }
 });
-
-app.post('/add_rubber_transaction', async (req, res) => {
-  try {
-      const { receipt_number, branch_id, customer_id, total_amount, items } = req.body;
-
-      if (!receipt_number || !branch_id || !customer_id || !items || items.length === 0) {
-          return res.status(400).json({ error: 'Missing required fields or items' });
-      }
-
-      const receiptSql = `INSERT INTO receipts (receipt_number, branch_id, customer_id, total_amount) VALUES (?, ?, ?, ?)`;
-      const [receiptResult] = await db.query(receiptSql, [receipt_number, branch_id, customer_id, total_amount]);
-      const receiptId = receiptResult.insertId;
-
-      const itemSql = `INSERT INTO receipt_items (receipt_id, product_name, quantity, unit_price, total_price) VALUES ?`;
-      const itemValues = items.map(item => [receiptId, item.product_name, item.quantity, item.unit_price, item.total_price]);
-      await db.query(itemSql, [itemValues]);
-
-      res.status(201).json({ message: 'Rubber transaction added successfully', receipt_id: receiptId });
-  } catch (error) {
-      console.error("Error adding rubber transaction:", error);
-      res.status(500).json({ error: "Failed to add rubber transaction." });
-  }
-});
-
 // เส้นทางดึงข้อมูลใบเสร็จพร้อมรายละเอียดสินค้า
 app.get('/get_rubber_transactions', async (req, res) => {
   try {
