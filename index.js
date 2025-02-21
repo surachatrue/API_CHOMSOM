@@ -8,6 +8,7 @@ const os = require("os");
 const cors = require("cors");
 // ใช้ Middleware รองรับ JSON
 app.use(express.json());
+
 //test auto fetch
 app.use(cors({
   origin: "*", // หรือกำหนดเป็น ["http://example.com", "http://localhost:3000"]
@@ -616,40 +617,92 @@ app.put("/update_user/:id", async (req, res) => {
 });
 
 app.post("/login", async (req, res) => {
-  console.log(req.body);
-  const { username, password ,breach} = req.body;
+  const { email, password } = req.body;
 
-  if (!username || !password) {
-    return res.status(400).json({ error: "Email and password are required." });
+  if (!email || !password) {
+      return res.status(400).json({ error: "Email and password are required." });
   }
 
   try {
-    // 🔹 ดึงข้อมูลผู้ใช้จาก database
-    const [users] = await db.query("SELECT * FROM auth WHERE email = ? AND password = ? LIMIT 1", [username,password ,breach]);
+      // 🔹 ดึงข้อมูลจาก `auth`
+      const [users] = await db.query("SELECT * FROM auth WHERE email = ? LIMIT 1", [email]);
 
-    if (users.length === 0) {
-      return res.status(404).json({ error: "User not found." });
-    }
+      if (users.length === 0) {
+          return res.status(404).json({ error: "User not found." });
+      }
 
-    const user = users[0];
+      const user = users[0];
 
-    // 🔹 ตรวจสอบรหัสผ่าน 
-    const isPasswordValid =  user.password;
-    if (!isPasswordValid) {
-      return res.status(401).json({ error: "Invalid password." });
-    }
+      // 🔹 ตรวจสอบว่าบัญชีถูกระงับหรือไม่
+      if (user.breach === 1) {
+          return res.status(403).json({ error: "Your account has been suspended. Please contact support." });
+      }
 
-    // 🔹 ส่งข้อมูลผู้ใช้กลับไป
-    res.status(200).json({
-      status: 200,
-      message: "Login successful.",
-      userId: user.id,
-      username: user.username,
-    });
+      // 🔹 ตรวจสอบรหัสผ่าน
+      const isPasswordValid = await bcrypt.compare(password, user.password);
+      if (!isPasswordValid) {
+          return res.status(401).json({ error: "Invalid password." });
+      }
+
+      // 🔹 ดึงข้อมูลพนักงานจาก `employees`
+      const [employees] = await db.query("SELECT * FROM employees WHERE email = ? LIMIT 1", [email]);
+      if (employees.length === 0) {
+          return res.status(404).json({ error: "Employee record not found." });
+      }
+
+      const employee = employees[0];
+
+    
+
+      res.status(200).json({
+          message: "Login successful.",
+          token,
+          user: {
+              id: employee.id,
+              username: employee.username,
+              email: employee.email,
+              branch_id: employee.branch_id,
+              role: employee.role,
+          },
+      });
 
   } catch (error) {
-    console.error("Error logging in:", error);
-    res.status(500).json({ error: "Failed to log in." });
+      console.error("Error logging in:", error);
+      res.status(500).json({ error: "Failed to log in." });
+  }
+});
+
+
+app.post("/register", async (req, res) => {
+  const { username, email, password, branch_code, role } = req.body;
+
+  if (!username || !email || !password || !branch_code) {
+      return res.status(400).json({ error: "All fields are required." });
+  }
+
+  try {
+      // 🔹 เช็คว่า branch_code มีอยู่หรือไม่
+      const [branch] = await db.query("SELECT id FROM branch WHERE branch_code = ? LIMIT 1", [branch_code]);
+      if (branch.length === 0) {
+          return res.status(400).json({ error: "Invalid branch code." });
+      }
+      const branch_id = branch[0].id;
+
+      // 🔹 เข้ารหัส password
+      const hashedPassword = await bcrypt.hash(password, 10);
+
+      // 🔹 เพิ่มข้อมูลเข้า `auth`
+      await db.query(`INSERT INTO auth (email, password, branch_code) VALUES (?, ?, ?)`, [email, hashedPassword, branch_code]);
+
+      // 🔹 เพิ่มข้อมูลเข้า `employees`
+      await db.query(`INSERT INTO employees (branch_id, username, email, role) VALUES (?, ?, ?, ?)`, 
+          [branch_id, username, email, role || "staff"]
+      );
+
+      res.status(201).json({ message: "Employee registered successfully." });
+  } catch (error) {
+      console.error("Error registering employee:", error);
+      res.status(500).json({ error: "Failed to register employee." });
   }
 });
 
@@ -800,7 +853,49 @@ app.post('/add_branch', async (req, res) => {
   }
 });
 
+app.post("/logout", async (req, res) => {
+  const token = req.headers.authorization?.split(" ")[1]; // รับ Token จาก Header
 
+  if (!token) {
+      return res.status(400).json({ error: "Token is required." });
+  }
+
+  try {
+      // 🔹 เก็บ Token ลง Blacklist
+      await db.query("INSERT INTO token_blacklist (token) VALUES (?)", [token]);
+
+      res.status(200).json({ message: "Logged out successfully." });
+  } catch (error) {
+      console.error("Error logging out:", error);
+      res.status(500).json({ error: "Failed to log out." });
+  }
+});
+const verifyToken = async (req, res, next) => {
+  const token = req.headers.authorization?.split(" ")[1];
+
+  if (!token) {
+      return res.status(401).json({ error: "Unauthorized." });
+  }
+
+  try {
+      // 🔹 ตรวจสอบว่า Token อยู่ใน Blacklist หรือไม่
+      const [blacklisted] = await db.query("SELECT * FROM token_blacklist WHERE token = ? LIMIT 1", [token]);
+
+      if (blacklisted.length > 0) {
+          return res.status(401).json({ error: "Token has been logged out." });
+      }
+
+      req.user = decoded;
+      next();
+  } catch (error) {
+      return res.status(401).json({ error: "Invalid or expired token." });
+  }
+};
+
+// ใช้ Middleware นี้กับ API ที่ต้องการให้ล็อกอินก่อนใช้งาน
+app.get("/profile", verifyToken, (req, res) => {
+  res.json({ message: "This is a protected route.", user: req.user });
+});
 
 app.post('/add_rubber_transaction', async (req, res) => {
   try {
